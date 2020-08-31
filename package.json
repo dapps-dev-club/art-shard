@@ -4,7 +4,7 @@
   "description": "art shard",
   "main": "networks.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "oz compile && mocha --exit --recursive ./test/**/*.spec.js"
   },
   "repository": {
     "type": "git",
@@ -19,5 +19,12 @@
   "bugs": {
     "url": "https://github.com/dapps-dev-club/art-shard/issues"
   },
-  "homepage": "https://github.com/dapps-dev-club/art-shard#readme"
+  "homepage": "https://github.com/dapps-dev-club/art-shard#readme",
+  "dependencies": {
+    "@openzeppelin/contracts": "3.1.0"
+  },
+  "devDependencies": {
+    "@openzeppelin/test-environment": "0.1.4",
+    "mocha": "8.1.2"
+  }
 }

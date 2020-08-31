@@ -1,0 +1,19 @@
+{
+  "contracts": {},
+  "solidityLibs": {},
+  "proxies": {
+    "art-shard/ArtShard": [
+      {
+        "address": "0x6EF21E9E99CB8A6D84360754b806C45c448c5f10",
+        "kind": "NonProxy",
+        "bytecodeHash": "d9051273ef2d729cb5e7e174abbd82a2c6f4056ff39faf3171ae5df796973dbe"
+      },
+      {
+        "address": "0x3CE158824869c1d912688a6a875BEF217Fd2465E",
+        "kind": "NonProxy",
+        "bytecodeHash": "de80079a8e8fc992288ec5cb9d7143adbc29018c0e49187289c58216cef35305"
+      }
+    ]
+  },
+  "manifestVersion": "2.2"
+}
