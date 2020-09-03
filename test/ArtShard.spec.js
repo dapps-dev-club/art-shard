@@ -648,4 +648,123 @@ describe('ArtShard - buyArt', () => {
     });
 
   });
+
+  describe('second purchase', () => {
+
+    it('invoke with state transition', async () => {
+      // without approval, smart contract would not be allowed to
+      // transfer its NFT when bought
+      await instance.setApprovalForAll(
+        instance.address,
+        true,
+        { from: buyerA },
+      );
+
+      await instance.buyArt(
+        createdArtIdx1, // uint256 artId,
+        1, // uint16 units,
+        buyerA, // address seller
+        { from: buyerB },
+      );
+
+      // note that assertions are in subsequent blocks
+    });
+
+    it('seller should have NFT count decrease by units sold', async () => {
+      const sellerNftCount = await instance.balanceOf(
+        buyerA,
+        createdArtIdx1,
+      );
+
+      assert.equal(
+        sellerNftCount.toString(),
+        '1',
+        'unexpected balance',
+      );
+    });
+
+    it('underwriter should have FT count increase by commissions times units sold', async () => {
+      const underwriterFtCount = await instance.balanceOf(
+        underwriterA,
+        ART_DENARIUS,
+      );
+
+      // startBalance plus
+      // (unitCommission times unitsSold times
+      // unitsUnderwritten divided unitsTotal)
+      // 51m + (1m * 1 * 8 / 10) = 52.4m
+
+      assert.equal(
+        underwriterFtCount.toString(),
+        '52400000',
+        'unexpected balance',
+      );
+    });
+
+    it('artist should have FT count increase by commissions times units sold', async () => {
+      const artistFtCount = await instance.balanceOf(
+        artistA,
+        ART_DENARIUS,
+      );
+
+      // startBalance plus
+      // (unitCommission times unitsSold times
+      // unitsUnderwritten divided unitsTotal)
+      // 68.4m + (1m * 1 * 2 / 10) = 68.6m
+
+      assert.equal(
+        artistFtCount.toString(),
+        '68600000',
+        'unexpected balance',
+      );
+    });
+
+    it('seller should have FT count increase by price less commissions times units sold', async () => {
+      const sellerFtCount = await instance.balanceOf(
+        buyerA,
+        ART_DENARIUS,
+      );
+
+      // startBalance plus
+      // ((unitPrice minus unitCommission) times (unitsSold))
+      // 30m + ((10m - 1m) * 1) = 39m
+
+      assert.equal(
+        sellerFtCount.toString(),
+        '39000000',
+        'unexpected balance',
+      );
+    });
+
+    it('buyer should have NFT count increase by units sold', async () => {
+      const buyerNftCount = await instance.balanceOf(
+        buyerB,
+        createdArtIdx1,
+      );
+
+      assert.equal(
+        buyerNftCount.toString(),
+        '1',
+        'unexpected balance',
+      );
+    });
+
+    it('buyer should have FT count decrease by unit price times units sold', async () => {
+      const buyerFtCount = await instance.balanceOf(
+        buyerB,
+        ART_DENARIUS,
+      );
+
+      // startBalance minus
+      // (unitPrice times unitsSold)
+      // 50m + (10m * 1) = 40m
+
+      assert.equal(
+        buyerFtCount.toString(),
+        '40000000',
+        'unexpected balance',
+      );
+    });
+
+  });
 });
