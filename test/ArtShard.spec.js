@@ -47,11 +47,15 @@ describe('ArtShard - initial state', () => {
   });
 });
 
+const ART_DENARIUS_TEST_START_BALANCE = 50e6;
+
 async function setupHelper(
   shouldTransferFtToOtherAccounts,
 ) {
   const [
     owner,
+    artistA,
+    artistB,
     underwriterA,
     underwriterB,
     buyerA,
@@ -67,6 +71,8 @@ async function setupHelper(
 
   if (shouldTransferFtToOtherAccounts) {
     const transferFtPromises = [
+      artistA,
+      artistB,
       underwriterA,
       underwriterB,
       buyerA,
@@ -76,7 +82,7 @@ async function setupHelper(
         owner, // address _from,
         toAccount, // address _to,
         ART_DENARIUS, // uint256 _id,
-        new BN(50e6), // uint256 _value,
+        new BN(ART_DENARIUS_TEST_START_BALANCE), // uint256 _value,
         '0x', // bytes calldata _data,
         { from: owner },
       );
@@ -89,6 +95,8 @@ async function setupHelper(
     ART_DENARIUS,
     NON_FUNGIBLE_INDEX,
     owner,
+    artistA,
+    artistB,
     underwriterA,
     underwriterB,
     buyerA,
@@ -239,24 +247,29 @@ describe('ArtShard - produceArt', () => {
 });
 
 describe('ArtShard - underwriteArt', () => {
-  let owner;
   let instance;
   let ART_DENARIUS;
   let NON_FUNGIBLE_INDEX;
+
+  let owner;
+  let underwriterA;
+  let underwriterB;
+  let buyerA;
+  let buyerB;
 
   let createdArtIdx1;
   let createdArtIdx2;
 
   before(async () => {
     ({
-      owner,
       instance,
+      ART_DENARIUS,
+      NON_FUNGIBLE_INDEX,
+      owner,
       underwriterA,
       underwriterB,
       buyerA,
       buyerB,
-      ART_DENARIUS,
-      NON_FUNGIBLE_INDEX,
     } = await setupHelper(true));
 
     let artIdx;
@@ -300,7 +313,8 @@ describe('ArtShard - underwriteArt', () => {
       { from: underwriterA },
     );
 
-    // doesn't do anything, just checking that it doesn't crash anything
+    // doesn't do anything, just checking that it doesn't
+    // revert
   });
 
   it('invoke with state transition', async () => {
@@ -309,6 +323,8 @@ describe('ArtShard - underwriteArt', () => {
       new BN(8), // uint16 unitsUnderwritten
       { from: underwriterA },
     );
+
+    // note that assertions are in subsequent blocks
   });
 
   it('updates art object', async () => {
@@ -414,11 +430,18 @@ describe('ArtShard - underwriteArt', () => {
   // TODO with 2nd piece of art, do not fully underwrite it
 });
 
-describe('ArtShard - _beforeTokenTransfer', () => {
-  let owner;
+describe('ArtShard - buyArt', () => {
   let instance;
   let ART_DENARIUS;
   let NON_FUNGIBLE_INDEX;
+
+  let owner;
+  let artistA;
+  let artistB;
+  let underwriterA;
+  let underwriterB;
+  let buyerA;
+  let buyerB;
 
   let createdArtIdx1;
 
@@ -426,6 +449,8 @@ describe('ArtShard - _beforeTokenTransfer', () => {
     ({
       owner,
       instance,
+      artistA,
+      artistB,
       underwriterA,
       underwriterB,
       buyerA,
@@ -444,7 +469,7 @@ describe('ArtShard - _beforeTokenTransfer', () => {
       new BN('1000000'), // 10% // uint256 unitCommission,
       10, // uint16 unitsTotal,
       2, // uint16 unitsArtistStake
-      { from: owner },
+      { from: artistA },
     );
 
     artIdx = await instance.artIdx.call();
@@ -457,7 +482,9 @@ describe('ArtShard - _beforeTokenTransfer', () => {
     );
 
     artIdx = await instance.artIdx.call();
-    assert.equal(artIdx.toString(), NON_FUNGIBLE_INDEX.addn(1).toString(),
+    assert.equal(
+      artIdx.toString(),
+      NON_FUNGIBLE_INDEX.addn(1).toString(),
       'sanity check failure - artIdx');
     const art = await instance.arts.call(createdArtIdx1);
     assert.equal(
@@ -469,15 +496,156 @@ describe('ArtShard - _beforeTokenTransfer', () => {
   });
 
   it('invoke without state transition', async () => {
-    await instance.safeTransferFrom.call(
-      owner, // address _from,
-      buyerA, // address _to,
-      createdArtIdx1, // uint256 _id,
-      1, // uint256 _value,
-      '0x', // bytes calldata _data,
-      { from: underwriterA },
+    await instance.buyArt.call(
+      createdArtIdx1, // uint256 artId,
+      2, // uint16 units,
+      artistA, // address seller
+      { from: buyerA },
     );
 
-    // doesn't do anything, just checking that it doesn't crash anything
+    // doesn't do anything, just checking that it doesn't
+    // revert
+  });
+
+  it('pre-transition sanity checks', async () => {
+    const sellerNftCount = await instance.balanceOf(
+      artistA,
+      createdArtIdx1,
+    );
+    assert.equal(
+      sellerNftCount.toString(),
+      '10',
+      'unexpected seller NFT balance',
+    );
+
+    const buyerNftCount = await instance.balanceOf(
+      buyerA,
+      createdArtIdx1,
+    );
+    assert.equal(
+      buyerNftCount.toString(),
+      '0',
+      'unexpected buyer NFT balance',
+    );
+
+    const buyerFtCount = await instance.balanceOf(
+      buyerA,
+      ART_DENARIUS,
+    );
+    assert.equal(
+      buyerFtCount.toString(),
+      '50000000',
+      'unexpected buyer FT balance',
+    );
+
+    const sellerFtCount = await instance.balanceOf(
+      artistA,
+      ART_DENARIUS,
+    );
+    assert.equal(
+      sellerFtCount.toString(),
+      '50000000',
+      'unexpected seller FT balance',
+    );
+  });
+
+  describe('first purchase', () => {
+
+    it('invoke with state transition', async () => {
+      await instance.buyArt(
+        createdArtIdx1, // uint256 artId,
+        2, // uint16 units,
+        artistA, // address seller
+        { from: buyerA },
+      );
+
+      // note that assertions are in subsequent blocks
+    });
+
+    it('seller should have NFT count decrease by units sold', async () => {
+      const sellerNftCount = await instance.balanceOf(
+        artistA,
+        createdArtIdx1,
+      );
+
+      assert.equal(
+        sellerNftCount.toString(),
+        '8',
+        'unexpected balance',
+      );
+    });
+
+    it('underwriter should have FT count increase by commissions times units sold', async () => {
+      const underwriterFtCount = await instance.balanceOf(
+        underwriterA,
+        ART_DENARIUS,
+      );
+
+      // startBalance plus
+      // (unitCommission times unitsSold times
+      // unitsUnderwritten divided unitsTotal)
+      // 50m + (1m * 2 * 8 / 10) = 51.6m
+
+      assert.equal(
+        underwriterFtCount.toString(),
+        '51600000',
+        'unexpected balance',
+      );
+    });
+
+    it('seller (also artist) should have FT count increase by price less commissions times units sold, and also earn commissions from stake', async () => {
+      const sellerFtCount = await instance.balanceOf(
+        artistA,
+        ART_DENARIUS,
+      );
+
+      // startBalance plus
+      // ((unitPrice minus unitCommission) times (unitsSold))
+      // 50m + ((10m - 1m) * 2) = 68m
+
+      // in this case the seller is the artist who also is an
+      // underwriter because of staked units/
+      // startBalance plus
+      // (unitCommission times unitsSold times
+      // unitsStaked divided unitsTotal)
+      // 68m + (1m * 2 * 2 / 10) = 68.4m
+
+      assert.equal(
+        sellerFtCount.toString(),
+        '68400000',
+        'unexpected balance',
+      );
+    });
+
+    it('buyer should have NFT count increase by units sold', async () => {
+      const buyerNftCount = await instance.balanceOf(
+        buyerA,
+        createdArtIdx1,
+      );
+
+      assert.equal(
+        buyerNftCount.toString(),
+        '2',
+        'unexpected balance',
+      );
+    });
+
+    it('buyer should have FT count decrease by unit price times units sold', async () => {
+      const buyerFtCount = await instance.balanceOf(
+        buyerA,
+        ART_DENARIUS,
+      );
+
+      // startBalance minus
+      // (unitPrice times unitsSold)
+      // 50m + (10m * 2) = 30m
+
+      assert.equal(
+        buyerFtCount.toString(),
+        '30000000',
+        'unexpected balance',
+      );
+    });
+
   });
 });
