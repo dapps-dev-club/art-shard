@@ -1,8 +1,12 @@
 pragma solidity ^0.6.0;
 
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import "@openzeppelin/contracts/token/ERC1155/ERC1155Holder.sol";
 
-contract ArtShard is ERC1155 {
+contract ArtShard is
+  ERC1155,
+  ERC1155Holder
+{
 
   struct ArtUnderwrite {
     address account;
@@ -30,6 +34,7 @@ contract ArtShard is ERC1155 {
   uint256 public artIdx = NON_FUNGIBLE_INDEX;
 
   constructor()
+    // TODO this is a placeholder URL
     ERC1155("https://art.shard/api/item/{1}.json")
     public
   {
@@ -78,6 +83,16 @@ contract ArtShard is ERC1155 {
 
     // Accounting and transfers for balance increment
     // TODO
+
+    // NOTE this relies on a patch to the underlying ERC1155
+    // implementation which allows an account to approve
+    // the smart contract to transfer tokens irrespective
+    // of message sender
+    // Ref: https://github.com/OpenZeppelin/openzeppelin-contracts/pull/2346
+    setApprovalForAll(
+      address(this), // address operator,
+      true // bool approved
+    );
 
     // Emit event
     //TODO
@@ -131,8 +146,11 @@ contract ArtShard is ERC1155 {
       //TODO
 
       // Mint
+      // NOTE artists holds all the tokens, not underwriter.
+      // But artist has already pre-approved this smart contract
+      // as able to operate its tokens.
       _mint(
-        arts[artId].artist,
+        arts[artId].artist, // address(this),
         artId,
         arts[artId].unitsTotal,
         ""
@@ -157,64 +175,68 @@ contract ArtShard is ERC1155 {
     return (underwrite.account, underwrite.quantity);
   }
 
-  //Override transfer functions to collect commission
-  function _beforeTokenTransfer(
-    address operator,
-    address from,
-    address to,
-    uint256[] memory ids,
-    uint256[] memory amounts,
-    bytes memory data
+  function buyArt(
+    uint256 artId,
+    uint16 units,
+    address seller
   )
-    override
-    internal
-    virtual
+    external
   {
-    if (from == address(0) || to == address(0)) {
-      // we do not need to do anything if this is a mint or burn,
-      // only care about transfer from one account to another
-      return;
-    }
+    // Ensure that smart contract is approved to send NFT
+    // TODO
 
-    // TODO check NFT purchase intent of `to` account,
-    // since it is transferring FT to the `from` account for commission
-    // perhaps use ecrecover to check signed `data`,
-    // but in a manner that isn't subject to replayability?
-    // Will get this error: "ERC1155: caller is not owner nor approved"
-    // Perhaps the workaround is to have a special account,
-    // e.g. the owner or the exchange, be aproved to do transfers on both
-    // ... but that prevents a fully decentralise solution, and who pays for gas
+    Art memory art = arts[artId];
 
-    for (uint256 i = 0; i < ids.length; i++) {
-      uint256 id = ids[i];
-      if (id > NON_FUNGIBLE_INDEX) {
-        // fungible token transfer is occuring,
-        // so need to calculate commission for underwriters
-        // and do a batch transfer
-        Art memory art = arts[id];
+    // Ensure that buyer has enough to pay for commissions
+    uint256 totalCommission = art.unitCommission
+      .mul(units);
+    require(
+      balanceOf(msg.sender, art.unitPriceTokenId) >= totalCommission,
+      "ArtShard: Not enough FT balance to pay commissions for NFT transfer"
+    );
 
-        // Ensure that sender has enough to pay for commissions
-        uint256 totalCommission = art.unitCommission.mul(art.unitPrice);
-        require(
-          balanceOf(from, art.unitPriceTokenId) >= totalCommission,
-          "ArtShard: Not enough FT balance to pay commissions for NFT transfer"
-        );
+    // Transfer the NFT to buyer
+    // (this smart contract already should have approval)
+    // NOTE this relies on a patch to the underlying ERC1155
+    // implementation which allows an account to approve
+    // the smart contract to transfer tokens irrespective
+    // of message sender
+    // Ref: https://github.com/OpenZeppelin/openzeppelin-contracts/pull/2346
+    safeTransferFrom(
+      seller, // address from,
+      msg.sender, // address to,
+      artId, // uint256 id,
+      units, // uint256 amount,
+      "" // bytes memory data
+    );
 
-        // Transfer to each underwriter
-        for (uint8 ui = 0; ui < art.underwriterCount; ui++) {
-          ArtUnderwrite memory artUnderwrite = arts[id].underwriters[ui];
-          uint256 underwriterCommission = totalCommission
-            .mul(artUnderwrite.quantity)
-            .div(art.underwriterCount);
-          safeTransferFrom(
-            operator, // address from,
-            artUnderwrite.account, // address to,
-            art.unitPriceTokenId, // uint256 id,
-            underwriterCommission, // uint256 amount,
-            "" // bytes memory data
-          );
-        }
-      }
+    // Transfer the price less commissions in FT to seller
+    uint256 sellerReceiveAmount = art
+      .unitPrice.mul(units)
+      .sub(totalCommission);
+    safeTransferFrom(
+      msg.sender, // address from,
+      seller, // address to,
+      art.unitPriceTokenId, // uint256 id,
+      sellerReceiveAmount, // uint256 amount,
+      "" // bytes memory data
+    );
+
+    // Transfer share of commissions in FT to each underwriter
+    for (uint8 ui = 1; ui <= art.underwriterCount; ui++) {
+      ArtUnderwrite memory artUnderwrite =
+        arts[artId].underwriters[ui];
+      uint256 underwriterCommission = totalCommission
+        .mul(artUnderwrite.quantity)
+        .div(art.unitsTotal);
+      safeTransferFrom(
+        msg.sender, // address from,
+        artUnderwrite.account, // address to,
+        art.unitPriceTokenId, // uint256 id,
+        underwriterCommission, // uint256 amount,
+        "" // bytes memory data
+      );
     }
   }
+
 }
